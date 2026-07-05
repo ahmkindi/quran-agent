@@ -28,6 +28,12 @@ sp=spm.SentencePieceProcessor(); sp.load('bpe.model'); \
     "${KWS_WORDS}" > keywords.txt \
     # Boost short single-token words (weakest to spot; NEXT misses without it).
     && sed -i 's/^▁NEXT @NEXT$/▁NEXT :2.5 @NEXT/' keywords.txt \
+    # Aliases for "next": bare NEXT is a single weak BPE token the acoustic
+    # model rarely hypothesizes; SKIP (4 tokens) and NEXT VERSE detect reliably.
+    && python3 -c "import sentencepiece as spm; \
+sp=spm.SentencePieceProcessor(); sp.load('bpe.model'); \
+print(' '.join(sp.encode('SKIP', out_type=str)) + ' @SKIP'); \
+print(' '.join(sp.encode('NEXT VERSE', out_type=str)) + ' @NEXT_VERSE')" >> keywords.txt \
     && echo "keywords.txt:" && cat keywords.txt
 
 WORKDIR /src

@@ -84,7 +84,7 @@ func actionFor(keyword string) string {
 		return "stop"
 	case "again":
 		return "again"
-	case "next":
+	case "next", "skip", "next_verse": // skip/next-verse: acoustically stronger aliases
 		return "next"
 	case "previous":
 		return "previous"

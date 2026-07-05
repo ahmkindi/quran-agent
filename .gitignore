@@ -39,3 +39,6 @@ CLAUDE.md
 /server
 /webcheck
 /latprobe
+
+# presentation material stays local
+slides/
