@@ -150,6 +150,7 @@ func (c *call) runPlayback(ctx context.Context, gen int, refs []quran.Ref, repea
 		span.SetAttributes(attribute.String("reason", reason))
 		span.End()
 	}()
+	var streamed, fetchErrs int
 	defer func() {
 		// Clear active only if we're still the current playback (a replace/stop
 		// bumped playGen and already took ownership otherwise).
@@ -167,9 +168,14 @@ func (c *call) runPlayback(ctx context.Context, gen int, refs []quran.Ref, repea
 			// Only a natural finish (not stop/replace, which cancel ctx) nudges
 			// the model, AFTER the suppression flag is cleared so its reply audio
 			// isn't swallowed. Without this the call goes dead until the driver
-			// speaks again.
+			// speaks again. If NOTHING played (CDN outage), the driver heard
+			// silence — the model must own up, not act as if it finished.
 			if ctx.Err() == nil {
-				c.notifyPlaybackDone(last)
+				if streamed == 0 && fetchErrs > 0 {
+					c.notifyPlaybackFailed(last)
+				} else {
+					c.notifyPlaybackDone(last)
+				}
 			}
 		}
 		close(done)
@@ -208,8 +214,15 @@ func (c *call) runPlayback(ctx context.Context, gen int, refs []quran.Ref, repea
 			pcm, err := c.eng.qc.AyahPCM(ctx, c.eng.settings.Reciter, ref.Surah, ref.Ayah)
 			if err != nil {
 				c.log.Warn("recitation fetch/decode failed", "ref", ref.String(), "err", err)
+				fetchErrs++
+				// A looping selection that can't fetch anything must not spin
+				// on the network forever.
+				if repeat == 0 && fetchErrs >= 3 && streamed == 0 {
+					return
+				}
 				continue
 			}
+			streamed++
 			c.playbackPCM.Add(int64(len(pcm)))
 			// Prefetch the following verse while this one plays, so "next" is instant.
 			if nref, ok := quran.Next(ref.Surah, ref.Ayah); ok {
@@ -333,6 +346,19 @@ func (c *call) notifyPlaybackDone(last quran.Ref) {
 		Content: genai.NewContentFromText(msg, genai.RoleUser),
 	}); err != nil {
 		c.log.Warn("playback-done notify failed", "err", err)
+	}
+}
+
+// notifyPlaybackFailed tells the model the recitation produced no audio (e.g.
+// the audio CDN was unreachable) so it apologizes instead of leaving dead air.
+func (c *call) notifyPlaybackFailed(last quran.Ref) {
+	c.callSpan.AddEvent("playback-failed nudge")
+	c.log.Warn("playback produced no audio; nudging model", "last", last.String())
+	msg := "(system note: the recitation audio could not be downloaded — a temporary network problem, not the driver's fault. Briefly apologize and offer to try again in a moment. Do not call a play tool until the driver asks.)"
+	if err := c.live.Send(agent.LiveRequest{
+		Content: genai.NewContentFromText(msg, genai.RoleUser),
+	}); err != nil {
+		c.log.Warn("playback-failed notify failed", "err", err)
 	}
 }
 

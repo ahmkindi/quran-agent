@@ -195,8 +195,12 @@ func (c *Client) AyahPCM(ctx context.Context, reciter string, surah, ayah int) (
 	c.log.Debug("audio cache", "key", key, "hit", false)
 
 	// Collapse concurrent identical loads (e.g. a prefetch racing the play, or
-	// many users hitting the same verse cold) into one fetch+decode.
-	v, err, _ := c.sf.Do(key, func() (any, error) {
+	// many users hitting the same verse cold) into one fetch+decode. DoChan +
+	// select so a cancelled CALLER unblocks immediately (a stop word must never
+	// wait out a hanging CDN fetch — that wedged a whole call once); the shared
+	// fetch itself runs on its own context, bounded by the HTTP client timeout,
+	// and still completes for other waiters / the cache.
+	ch := c.sf.DoChan(key, func() (any, error) {
 		c.mu.Lock()
 		if pcm, ok := c.cache[key]; ok { // filled while we waited
 			c.mu.Unlock()
@@ -205,7 +209,7 @@ func (c *Client) AyahPCM(ctx context.Context, reciter string, surah, ayah int) (
 		c.mu.Unlock()
 
 		t0 := time.Now()
-		mp3, err := c.getBytes(ctx, c.AudioURL(reciter, surah, ayah))
+		mp3, err := c.getBytes(context.Background(), c.AudioURL(reciter, surah, ayah))
 		if err != nil {
 			return nil, fmt.Errorf("fetch audio %d:%d: %w", surah, ayah, err)
 		}
@@ -224,10 +228,15 @@ func (c *Client) AyahPCM(ctx context.Context, reciter string, surah, ayah int) (
 		c.mu.Unlock()
 		return pcm, nil
 	})
-	if err != nil {
-		return nil, err
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case res := <-ch:
+		if res.Err != nil {
+			return nil, res.Err
+		}
+		return res.Val.([]byte), nil
 	}
-	return v.([]byte), nil
 }
 
 // putLocked inserts pcm and evicts oldest entries until the byte budget holds.
