@@ -1,0 +1,41 @@
+# env / secrets
+.env
+*.local
+deploy/secrets/
+*.json.key
+service-account*.json
+
+# build artifacts
+/bin/
+/tmp/
+*.out
+dist/
+
+# go
+vendor/
+
+# audio scratch (manual testing)
+*.wav
+*.raw
+*.opus
+
+# editor
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# playwright mcp artifacts
+.playwright-mcp/
+*.png
+docs
+
+# project docs stay local
+CLAUDE.md
+.claude/
+
+# local build binaries
+/qurancheck
+/server
+/webcheck
+/latprobe

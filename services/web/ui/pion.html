@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#10141d" />
+  <title>Al-Kindi · pion (raw WebRTC)</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <main class="card" id="card" data-state="idle">
+    <a class="back" href="/">← compare</a>
+    <div class="badge">raw pion</div>
+
+    <div class="star-wrap" aria-hidden="true">
+      <svg id="star" class="star" viewBox="0 0 160 160">
+        <g class="star-spin">
+          <g id="starGlow" class="star-glow">
+            <polygon points="80,16 144,80 80,144 16,80" />
+            <polygon points="34.7,34.7 125.3,34.7 125.3,125.3 34.7,125.3" />
+          </g>
+          <g class="star-frame">
+            <polygon points="80,16 144,80 80,144 16,80" />
+            <polygon points="34.7,34.7 125.3,34.7 125.3,125.3 34.7,125.3" />
+          </g>
+          <g class="star-lace">
+            <circle cx="80" cy="80" r="52.5" />
+            <circle cx="80" cy="80" r="24" />
+          </g>
+          <g id="starRose" class="star-rose">
+            <polygon points="80,46 114,80 80,114 46,80" />
+            <polygon points="56,56 104,56 104,104 56,104" />
+          </g>
+        </g>
+        <circle id="starCore" class="star-core" cx="80" cy="80" r="6.5" />
+      </svg>
+    </div>
+
+    <h1 class="title">Al-Kindi</h1>
+    <p class="title-ar" lang="ar" dir="rtl">رفيق القرآن</p>
+    <p class="status" id="status">Tap to talk</p>
+
+    <button id="callBtn" class="btn">Call</button>
+
+    <section class="nowplaying" id="nowplaying" hidden>
+      <div class="np-ornament" aria-hidden="true">۞</div>
+      <header class="np-surah">
+        <span class="np-surah-ar" lang="ar" dir="rtl" id="npSurahAr"></span>
+        <span class="np-surah-en" id="npSurahEn"></span>
+      </header>
+      <div class="np-body" id="npBody">
+        <p class="np-ayah" lang="ar" dir="rtl" id="npAyah"></p>
+        <p class="np-translation" id="npTranslation"></p>
+      </div>
+      <footer class="np-meta" id="npMeta"></footer>
+    </section>
+    <div class="hint" id="hint" hidden>
+      <span class="hint-dot"></span>
+      <span class="hint-label">say or tap</span>
+      <button type="button" class="kw" data-kw="stop">stop</button>
+      <button type="button" class="kw" data-kw="again">again</button>
+      <button type="button" class="kw" data-kw="next">next</button>
+      <button type="button" class="kw" data-kw="previous">previous</button>
+    </div>
+
+    <section class="transcript" id="transcript" aria-live="polite"></section>
+    <div class="tool" id="tool"></div>
+  </main>
+
+  <audio id="remote" autoplay></audio>
+  <script src="/hud.js"></script>
+  <script src="/star.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

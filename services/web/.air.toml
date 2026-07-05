@@ -1,0 +1,16 @@
+root = "."
+tmp_dir = "tmp/web"
+
+[build]
+  # web-service needs CGO for layeh.com/gopus (vendored libopus). -tags sherpa
+  # enables the real keyword spotter; its native .so lives in the go module
+  # cache (only present after a build), so copy it where the loader finds it.
+  cmd = "CGO_ENABLED=1 go build -tags sherpa -buildvcs=false -o ./tmp/web/main ./services/web/cmd/server && cp -u /go/pkg/mod/github.com/k2-fsa/sherpa-onnx-go-linux@*/lib/x86_64-unknown-linux-gnu/*.so* /usr/local/lib/ && ldconfig"
+  bin = "./tmp/web/main"
+  include_ext = ["go", "html", "js", "css"]
+  exclude_dir = ["tmp", "gen", "services/agent", "deploy", "build"]
+  delay = 200
+  stop_on_error = true
+
+[misc]
+  clean_on_exit = true

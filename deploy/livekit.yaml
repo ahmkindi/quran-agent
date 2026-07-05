@@ -1,0 +1,31 @@
+# LiveKit single-node DEV config (local A/B demo).
+#
+# Why a config file instead of `--dev`: two rtc options that fix same-host /
+# same-LAN ICE are config-only. Browsers hide their LAN IP behind an mDNS
+# `.local` ICE candidate; without use_mdns LiveKit FILTERS those remote
+# candidates (logs: `[remote][filtered] udp host :PORT`), leaving only the
+# public srflx candidate, which cannot hairpin on the same LAN -> the media
+# connection fails. Raw pion works because pion resolves mDNS; these flags give
+# LiveKit the same behavior.
+#
+# node_ip still comes from the command line (--node-ip <LAN IP>); `make livekit`
+# auto-detects it.
+port: 7880
+rtc:
+  tcp_port: 7881
+  udp_port: 7882
+  # Resolve browsers' mDNS (.local) host candidates instead of filtering them.
+  use_mdns: true
+  # Allow loopback candidates so a browser on this same machine can connect.
+  enable_loopback_candidate: true
+  # Exclude docker bridges so ICE + mDNS queries use the real LAN interface
+  # (multicast queries sent on docker bridges never reach the browser's mDNS
+  # responder, leaving remote .local candidates unresolved).
+  ips:
+    excludes:
+      - 172.16.0.0/12
+keys:
+  # Dev-only keys; prod uses deploy/livekit.prod.yaml with real secrets.
+  devkey: secret
+logging:
+  level: debug

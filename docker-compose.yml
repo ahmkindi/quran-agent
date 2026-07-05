@@ -1,0 +1,99 @@
+# Base stack. `docker compose up` auto-merges docker-compose.override.yml (DEV).
+# For PROD: docker compose -f docker-compose.yml -f docker-compose.prod.yml up
+name: quran-agent
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-quran}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-quran}
+      POSTGRES_DB: ${POSTGRES_DB:-quran}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-quran} -d ${POSTGRES_DB:-quran}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  agent:
+    build:
+      context: .
+      dockerfile: services/agent/Dockerfile
+    env_file: [.env]
+    environment:
+      AGENT_GRPC_ADDR: 0.0.0.0:9090
+      # Empty = tracing off. Set to jaeger:4317 (with --profile obs) to enable.
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    ports:
+      # web runs host-networked (see below) and dials the agent via loopback.
+      - "127.0.0.1:9090:9090"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # TURN relay for strict NATs (opt-in locally: docker compose --profile turn up;
+  # always on in prod). Host networking — the relay port range needs it.
+  coturn:
+    image: coturn/coturn:latest
+    profiles: [turn]
+    network_mode: host
+    volumes:
+      - ./deploy/coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro
+    command: ["--static-auth-secret=${TURN_SECRET:-quran-dev-turn-secret}"]
+    restart: unless-stopped
+
+  # Tracing backend (opt-in): docker compose --profile obs up. UI :16686.
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    profiles: [obs]
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686" # Jaeger UI
+      - "4317:4317"   # OTLP gRPC
+    restart: unless-stopped
+
+  # LiveKit SFU for the /livekit A/B transport. Host networking so browser +
+  # bot both reach ws://localhost:7880 and UDP media works without port mapping.
+  livekit:
+    image: livekit/livekit-server:latest
+    # Dev config enables rtc.use_mdns + enable_loopback_candidate so same-host /
+    # same-LAN browsers can pair (browsers hide their LAN IP behind mDNS, which
+    # LiveKit otherwise filters). node-ip should be the host LAN IP; set
+    # LIVEKIT_NODE_IP in .env (e.g. 192.168.x.x).
+    command: ["--config", "/etc/livekit.yaml", "--bind", "0.0.0.0", "--node-ip", "${LIVEKIT_NODE_IP:-127.0.0.1}"]
+    volumes:
+      - ./deploy/livekit.yaml:/etc/livekit.yaml:ro
+    network_mode: host
+    restart: unless-stopped
+
+  # web runs HOST-NETWORKED: its LiveKit bot is itself a WebRTC peer, and a
+  # bridge-network container cannot complete ICE with the host-networked LiveKit
+  # (container->host hairpin fails silently). Host net gives the bot the same
+  # interfaces as LiveKit — direct candidates that always pair. Also one less
+  # NAT hop on the pion media path.
+  web:
+    build:
+      context: .
+      dockerfile: services/web/Dockerfile
+    env_file: [.env]
+    network_mode: host
+    environment:
+      # Binds the host port directly (no docker publish on host net).
+      WEB_HTTP_ADDR: 0.0.0.0:${WEB_PORT:-8080}
+      AGENT_GRPC_TARGET: localhost:9090
+      LIVEKIT_WS_URL: ws://localhost:7880
+      LIVEKIT_HOST: ws://localhost:7880
+      LIVEKIT_API_KEY: devkey
+      LIVEKIT_API_SECRET: secret
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    depends_on:
+      - agent
+    restart: unless-stopped
+
+volumes:
+  pgdata:

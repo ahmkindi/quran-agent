@@ -1,0 +1,38 @@
+# Shared DEV image: full Go toolchain + air for hot reload. Source is
+# bind-mounted at runtime (see docker-compose.override.yml); the service to
+# build/run is selected by the air config passed as the command.
+FROM golang:1.26-bookworm
+
+# gcc/libc come with the image. libopus/libopusfile are needed by the LiveKit
+# media-sdk (hraban/opus.v2) used in web-service; our own gopus vendors libopus.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      libopus-dev libopusfile-dev libsoxr-dev \
+      python3 python3-pip curl ca-certificates bzip2 \
+    && rm -rf /var/lib/apt/lists/*
+RUN go install github.com/air-verse/air@latest
+
+# KWS model + keywords for the recitation-control spotter, mirroring
+# services/web/Dockerfile so `-tags sherpa` dev builds behave like prod.
+# sentencepiece is used once at build to tokenize the control words.
+RUN pip3 install --no-cache-dir --break-system-packages sentencepiece
+ARG KWS_MODEL=sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01
+RUN mkdir -p /models && cd /models \
+    && curl -fsSL -o kws.tar.bz2 \
+       "https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/${KWS_MODEL}.tar.bz2" \
+    && tar xjf kws.tar.bz2 && mv "${KWS_MODEL}" kws && rm kws.tar.bz2
+ARG KWS_WORDS=stop,again,next,previous
+RUN cd /models/kws && python3 -c "import sentencepiece as spm,sys; \
+sp=spm.SentencePieceProcessor(); sp.load('bpe.model'); \
+[print(' '.join(sp.encode(w, out_type=str)) + ' @' + w) \
+ for w in (x.strip().upper() for x in sys.argv[1].split(',')) if w]" \
+    "${KWS_WORDS}" > keywords.txt \
+    # Boost short single-token words (weakest to spot; NEXT misses without it).
+    && sed -i 's/^▁NEXT @NEXT$/▁NEXT :2.5 @NEXT/' keywords.txt \
+    && echo "keywords.txt:" && cat keywords.txt
+
+WORKDIR /app
+# Caches are mounted as volumes in compose so rebuilds stay fast.
+ENV GOFLAGS=-mod=mod
+EXPOSE 8080 9090
+# Default; overridden per-service in compose.
+CMD ["air", "-c", ".air.toml"]

@@ -1,0 +1,25 @@
+# Caddy reverse proxy for prod: automatic HTTPS (Let's Encrypt) + WSS.
+# Single-domain setup — set in the server's .env (compose passes them through):
+#   APP_DOMAIN   e.g. quran.kindi.dev
+#   ACME_EMAIL   cert notifications
+# LiveKit signaling shares the domain: the JS SDK talks to {url}/rtc, so /rtc*
+# routes to livekit :7880 and everything else to web :8080 (UI + /ws + APIs).
+# TURN (coturn) is NOT proxied — raw UDP/TCP straight to the VM IP.
+# web + livekit are host-networked, so Caddy (also host net) proxies localhost.
+
+{
+	email {$ACME_EMAIL}
+}
+
+{$APP_DOMAIN} {
+	encode gzip
+
+	@livekit path /rtc /rtc/*
+	handle @livekit {
+		reverse_proxy localhost:7880
+	}
+
+	handle {
+		reverse_proxy localhost:8080
+	}
+}

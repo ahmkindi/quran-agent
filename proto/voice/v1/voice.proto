@@ -1,0 +1,81 @@
+syntax = "proto3";
+
+// Package voice.v1 defines the audio bridge between the web gateway
+// (web-service) and the agent brain (agent-service). A single bidirectional
+// stream carries one live call: PCM audio frames + control events in both
+// directions. The web-service is the client; the agent-service is the server.
+package voice.v1;
+
+option go_package = "github.com/ahmkindi/quran-agent/gen/voice/v1;voicev1";
+
+// VoiceBridge is opened once per live call by the web-service.
+service VoiceBridge {
+  // Stream carries the full lifecycle of one call.
+  rpc Stream(stream ClientFrame) returns (stream ServerFrame);
+}
+
+// ClientFrame: web-service -> agent-service.
+message ClientFrame {
+  oneof payload {
+    // First message on the stream.
+    CallStart call_start = 1;
+    // Mic audio: PCM16 little-endian, 16 kHz, mono, ~20 ms frames.
+    bytes audio_in = 2;
+    // Last message; closes the call cleanly.
+    CallEnd call_end = 3;
+    // Control word detected by the web-service keyword spotter: act on the
+    // playing recitation now, without involving the LLM.
+    RecitationControl recitation_control = 4;
+  }
+}
+
+message RecitationControl {
+  string action = 1; // "stop" | "again" | "next" | "previous"
+}
+
+message CallStart {
+  string call_id = 1;     // unique per call
+  string session_id = 2;  // browser session (cookie) that owns the call
+  string lang_hint = 3;   // optional BCP-47 hint; empty = auto/multilingual
+}
+
+message CallEnd {
+  string reason = 1;
+}
+
+// ServerFrame: agent-service -> web-service.
+message ServerFrame {
+  oneof payload {
+    // Agent audio: PCM16 little-endian, 24 kHz, mono, streamed as produced.
+    bytes audio_out = 1;
+    // Barge-in: user interrupted; web-service must flush its outbound queue now.
+    Interrupt interrupt = 2;
+    // Agent asks to end the call.
+    Hangup hangup = 3;
+    // Observability: a tool was invoked.
+    ToolEvent tool_event = 4;
+    // Optional live transcript (input or output), for UI/debug.
+    Transcript transcript = 5;
+  }
+}
+
+message Interrupt {}
+
+message Hangup {
+  string reason = 1;
+}
+
+message ToolEvent {
+  string name = 1;
+  string status = 2; // "start" | "ok" | "error" | recitation: "start" | "verse" | "stop"
+  // Optional JSON payload for UI display. For name="recitation" status="verse"
+  // it carries the verse being recited (surah/ayah, names, Arabic text,
+  // translation, juz, repeat counters).
+  string detail = 3;
+}
+
+message Transcript {
+  string text = 1;
+  bool is_user = 2; // true = user speech, false = agent speech
+  bool final = 3;   // true once the segment is finalized
+}

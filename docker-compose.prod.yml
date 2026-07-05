@@ -1,0 +1,100 @@
+# PROD overrides — run on the VM (public IP + domain).
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Required in the VM's .env (see deploy/PROD.md for the full checklist):
+#   GOOGLE_API_KEY, APP_DOMAIN, TURN_HOST (domain or public IP), ACME_EMAIL,
+#   LIVEKIT_NODE_IP (VM public IP), LIVEKIT_API_KEY, LIVEKIT_API_SECRET,
+#   TURN_SECRET, COMPOSE_PROFILES=turn
+services:
+  agent:
+    environment:
+      LOG_LEVEL: info
+      LOG_FORMAT: json
+      # Latency-oriented GC: shorter pauses, bounded heap. Tune to the host.
+      GOGC: "100"
+      GOMEMLIMIT: "512MiB"
+      GOMAXPROCS: "2"
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 640M
+    restart: always
+
+  web:
+    environment:
+      LOG_LEVEL: info
+      LOG_FORMAT: json
+      GOGC: "100"
+      GOMEMLIMIT: "512MiB"
+      GOMAXPROCS: "2"
+      COOKIE_SECURE: "true"
+      # Caddy terminates TLS on this host and proxies to loopback; binding to
+      # 127.0.0.1 keeps plain-HTTP :8080 off the public interface.
+      WEB_HTTP_ADDR: 127.0.0.1:8080
+      ALLOWED_ORIGINS: https://${APP_DOMAIN}
+      # Browser reaches LiveKit through Caddy (WSS, /rtc path on the app
+      # domain); the bot stays on loopback.
+      LIVEKIT_WS_URL: wss://${APP_DOMAIN}
+      LIVEKIT_HOST: ws://localhost:7880
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET}
+      # TURN for strict-NAT users (both transports). Raw UDP/TCP, not proxied;
+      # TURN_HOST may be a bare IP (no DNS/TLS involved on 3478).
+      TURN_URLS: turn:${TURN_HOST}:3478?transport=udp,turn:${TURN_HOST}:3478?transport=tcp
+      TURN_SECRET: ${TURN_SECRET}
+      FORCE_RELAY: ${FORCE_RELAY:-false}
+      # Pin pion ICE media to a fixed UDP range and open it in the firewall.
+      # Without this, default-deny INPUT drops connectivity checks from
+      # symmetric-NAT clients (mobile CGNAT) and pion calls never establish.
+      PION_UDP_PORT_RANGE: 50700-50900
+      # Same-LAN mDNS workaround is a dev-only problem; public srflx pairs fine.
+      LIVEKIT_FORCE_RELAY: "false"
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 640M
+    restart: always
+
+  livekit:
+    command:
+      [
+        "--config", "/etc/livekit-prod.yaml",
+        "--bind", "0.0.0.0",
+        "--node-ip", "${LIVEKIT_NODE_IP}",
+      ]
+    volumes:
+      - ./deploy/livekit.prod.yaml:/etc/livekit-prod.yaml:ro
+    environment:
+      # Prod config file carries no keys; livekit-server reads them from here.
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}"
+    restart: always
+
+  # Always on in prod: set COMPOSE_PROFILES=turn in the VM's .env (compose
+  # profiles can't be un-set by an override file).
+  coturn:
+    command:
+      [
+        "--static-auth-secret=${TURN_SECRET}",
+        "--realm=${APP_DOMAIN}",
+      ]
+    restart: always
+
+  # Auto-HTTPS (Let's Encrypt) for the app + LiveKit signaling. Host network:
+  # web + livekit listen on loopback/host ports, so Caddy proxies localhost.
+  caddy:
+    image: caddy:2
+    network_mode: host
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: always
+
+volumes:
+  caddy_data:
+  caddy_config:

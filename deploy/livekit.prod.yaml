@@ -1,0 +1,15 @@
+# LiveKit single-node PROD config.
+# node_ip comes from the command line: --node-ip <VM PUBLIC IP> (set
+# LIVEKIT_NODE_IP in the server's .env; the prod compose passes it through).
+# Keys come from environment: LIVEKIT_KEYS="key: secret" (compose sets it from
+# LIVEKIT_API_KEY/LIVEKIT_API_SECRET) — do NOT commit real secrets here.
+port: 7880
+rtc:
+  tcp_port: 7881
+  # Single-port UDP mux: one firewall rule instead of a range.
+  udp_port: 7882
+  # The VM has a public IP; advertise it (validated by self-ping).
+  use_external_ip: true
+logging:
+  level: info
+  json: true

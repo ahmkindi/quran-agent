@@ -1,0 +1,13 @@
+.git
+.env
+*.local
+tmp/
+bin/
+dist/
+deploy/secrets/
+*.wav
+*.raw
+*.opus
+.idea/
+.vscode/
+README*.md

@@ -1,0 +1,38 @@
+# DEV overrides (auto-merged by `docker compose up`).
+# Hot reload via air, source bind-mounted, caches persisted, ports exposed.
+services:
+  agent:
+    build:
+      context: .
+      dockerfile: build/Dockerfile.dev
+    command: ["air", "-c", "services/agent/.air.toml"]
+    environment:
+      LOG_LEVEL: debug
+      LOG_FORMAT: text
+    volumes:
+      - .:/app
+      - gomod:/go/pkg/mod
+      - gocache:/root/.cache/go-build
+    # agent gRPC reaches the host via the base file's 127.0.0.1:9090 publish.
+
+  web:
+    build:
+      context: .
+      dockerfile: build/Dockerfile.dev
+    command: ["air", "-c", "services/web/.air.toml"]
+    environment:
+      LOG_LEVEL: debug
+      LOG_FORMAT: text
+      # web is host-networked, so the docker DNS name jaeger:4317 doesn't
+      # resolve; reach Jaeger via its host-published OTLP port instead.
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:+localhost:4317}
+      # Recitation-control keyword spotter (model baked into Dockerfile.dev).
+      KWS_MODEL_DIR: /models/kws
+    volumes:
+      - .:/app
+      - gomod:/go/pkg/mod
+      - gocache:/root/.cache/go-build
+
+volumes:
+  gomod:
+  gocache:
