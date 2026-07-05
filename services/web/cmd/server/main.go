@@ -63,7 +63,11 @@ func main() {
 	defer br.Close()
 
 	pion := rtc.NewManager(iceServers(), br,
-		config.GetBool("HALF_DUPLEX", true),
+		// Full duplex by default: the browser's echoCancellation handles speaker
+		// echo, and half-duplex makes barge-in impossible (mic frames are dropped
+		// while the agent speaks, so Gemini can never hear an interruption).
+		// Set HALF_DUPLEX=true only if a device with broken AEC self-interrupts.
+		config.GetBool("HALF_DUPLEX", false),
 		time.Duration(config.GetInt("MIC_HANGOVER_MS", 300))*time.Millisecond,
 		log)
 	// Pin ICE media to a fixed UDP range ("min-max") so the server firewall can
