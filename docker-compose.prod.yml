@@ -14,6 +14,9 @@ services:
       GOGC: "100"
       GOMEMLIMIT: "512MiB"
       GOMAXPROCS: "2"
+      # Tracing to Jaeger (obs profile). Agent is on the compose bridge net, so
+      # it reaches Jaeger by service DNS.
+      OTEL_EXPORTER_OTLP_ENDPOINT: jaeger:4317
     deploy:
       resources:
         limits:
@@ -28,6 +31,9 @@ services:
       GOGC: "100"
       GOMEMLIMIT: "512MiB"
       GOMAXPROCS: "2"
+      # web is host-networked, so it can't resolve the jaeger service name;
+      # it reaches the collector via the loopback-published OTLP port.
+      OTEL_EXPORTER_OTLP_ENDPOINT: localhost:4317
       COOKIE_SECURE: "true"
       # Caddy terminates TLS on this host and proxies to loopback; binding to
       # 127.0.0.1 keeps plain-HTTP :8080 off the public interface.
@@ -81,6 +87,19 @@ services:
       ]
     restart: always
 
+  # Jaeger tracing UI, exposed via Caddy at /jaeger (basic-auth gated). Bounded
+  # in-memory store; loopback-only ports (see base file) keep it off the public
+  # interface. Enable with COMPOSE_PROFILES=turn,obs in the VM .env.
+  jaeger:
+    environment:
+      QUERY_BASE_PATH: /jaeger
+      MEMORY_MAX_TRACES: "20000"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    restart: always
+
   # Auto-HTTPS (Let's Encrypt) for the app + LiveKit signaling. Host network:
   # web + livekit listen on loopback/host ports, so Caddy proxies localhost.
   caddy:
@@ -89,6 +108,9 @@ services:
     environment:
       APP_DOMAIN: ${APP_DOMAIN}
       ACME_EMAIL: ${ACME_EMAIL}
+      # Basic-auth credentials for the /jaeger tracing UI (bcrypt hash).
+      JAEGER_USER: ${JAEGER_USER:-admin}
+      JAEGER_PASS_HASH: ${JAEGER_PASS_HASH}
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

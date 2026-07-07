@@ -52,9 +52,17 @@ services:
     profiles: [obs]
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
+      # Root path in dev; prod serves it behind Caddy at /jaeger.
+      QUERY_BASE_PATH: ${JAEGER_BASE_PATH:-}
+      # Bound the in-memory trace store so Jaeger can't balloon RAM on the
+      # small prod VM.
+      MEMORY_MAX_TRACES: ${JAEGER_MAX_TRACES:-20000}
+    # Loopback-only: the UI + OTLP collector must never be publicly reachable
+    # (traces carry call ids, verse refs, latency). Host-net web dials
+    # localhost:4317; a browser (dev) or Caddy (prod) reaches localhost:16686.
     ports:
-      - "16686:16686" # Jaeger UI
-      - "4317:4317"   # OTLP gRPC
+      - "127.0.0.1:16686:16686" # Jaeger UI
+      - "127.0.0.1:4317:4317"   # OTLP gRPC
     restart: unless-stopped
 
   # LiveKit SFU for the /livekit A/B transport. Host networking so browser +

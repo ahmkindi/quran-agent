@@ -19,6 +19,17 @@
 		reverse_proxy localhost:7880
 	}
 
+	# Jaeger tracing UI (debug), gated by basic auth. JAEGER_USER / the bcrypt
+	# JAEGER_PASS_HASH come from the VM .env via the caddy service environment.
+	# Jaeger serves under this base path (QUERY_BASE_PATH=/jaeger).
+	@jaeger path /jaeger /jaeger/*
+	handle @jaeger {
+		basic_auth {
+			{$JAEGER_USER} {$JAEGER_PASS_HASH}
+		}
+		reverse_proxy localhost:16686
+	}
+
 	handle {
 		reverse_proxy localhost:8080
 	}
